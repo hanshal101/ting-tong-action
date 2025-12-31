@@ -1,69 +1,64 @@
 #!/bin/bash
 set -e
 
-# This script will be run when the Docker container starts
-# It will execute the ting-tong-test container with the specified parameters
-
 echo "Starting Ting Tong Action..."
-echo "Rules path: $1"
+echo "Rules input: $1"
 echo "Inline rules: $2"
 echo "Rules file: $3"
 
-# The rules path from input
-RULES_PATH="${1:-/rules}"
+RULES_INPUT="$1"
 INLINE_RULES="$2"
 RULES_FILE="${3:-custom-rule.yaml}"
 
-echo "Processing rules configuration..."
+# The consolidated rules directory will be created inside the workspace
+# This is the path inside the action container
+CONTAINER_RULES_DIR="/github/workspace/.ting-tong-rules"
+# This is the corresponding path on the host, for the docker-in-docker mount
+HOST_RULES_DIR="$GITHUB_WORKSPACE/.ting-tong-rules"
 
-# Create a directory to consolidate all rules
-CONSOLIDATED_RULES_DIR="/tmp/consolidated-rules"
-mkdir -p "$CONSOLIDATED_RULES_DIR"
+mkdir -p "$CONTAINER_RULES_DIR"
 
-# Change to the GitHub workspace
-cd /github/workspace
-
-# Copy built-in rules to consolidated directory if they exist
-if [ -d "/app/built-in-rules" ]; then
+# Copy built-in rules (assuming they are in /app/rules in action container)
+if [ -d "/app/rules" ] && [ "$(ls -A /app/rules)" ]; then
     echo "Copying built-in rules..."
-    cp -r /app/built-in-rules/* "$CONSOLIDATED_RULES_DIR/" 2>/dev/null || echo "No built-in rules found or directory is empty"
+    cp -r /app/rules/* "$CONTAINER_RULES_DIR/"
 fi
 
-# If a user provides a rules path and it exists, copy those rules as well
-if [ -n "$RULES_PATH" ]; then
-    if [ -f "$RULES_PATH" ]; then
-        echo "Copying rules from file: $RULES_PATH"
-        cp "$RULES_PATH" "$CONSOLIDATED_RULES_DIR/"
-    elif [ -d "$RULES_PATH" ]; then
-        echo "Copying rules from directory: $RULES_PATH"
-        cp -r "$RULES_PATH"/* "$CONSOLIDATED_RULES_DIR/"
+# Change to workspace to handle relative user paths
+cd /github/workspace
+
+# Copy user-provided rules
+if [ -n "$RULES_INPUT" ]; then
+    if [ -f "$RULES_INPUT" ]; then
+        echo "Copying rules from file: $RULES_INPUT"
+        cp "$RULES_INPUT" "$CONTAINER_RULES_DIR/"
+    elif [ -d "$RULES_INPUT" ]; then
+        echo "Copying rules from directory: $RULES_INPUT"
+        cp -r "$RULES_INPUT"/* "$CONTAINER_RULES_DIR/"
     else
-        echo "Warning: '$RULES_PATH' is not a valid file or directory."
+        echo "Warning: '$RULES_INPUT' is not a valid file or directory."
     fi
 fi
 
-# If inline rules are provided, add them to the consolidated directory
-if [ -n "$INLINE_RULES" ] && [ "$INLINE_RULES" != "" ]; then
-    echo "Adding custom rules from inline rules..."
-    echo "$INLINE_RULES" > "$CONSOLIDATED_RULES_DIR/$RULES_FILE"
+# Handle inline rules
+if [ -n "$INLINE_RULES" ]; then
+    echo "Adding inline rules..."
+    echo "$INLINE_RULES" > "$CONTAINER_RULES_DIR/$RULES_FILE"
 fi
 
-USE_RULES_PATH="$CONSOLIDATED_RULES_DIR"
+echo "Final consolidated rules list in $CONTAINER_RULES_DIR:"
+ls -lR "$CONTAINER_RULES_DIR"
 
-echo "Final consolidated rules list:"
-ls -lR "$USE_RULES_PATH"
+echo "Running ting-tong-test container, mounting $HOST_RULES_DIR"
 
-echo "Running ting-tong-test container with consolidated rules from: $USE_RULES_PATH"
-
-# Run the ting-tong-test container with the required parameters
-# Note: This requires a self-hosted runner with appropriate permissions
+# Run the ting-tong-test container
 docker run --rm --name ting-tong-test \
   --privileged \
   --pid=host \
   --net=host \
   -v /sys/fs/bpf:/sys/fs/bpf \
   -v /sys/kernel/debug:/sys/kernel/debug \
-  -v "$USE_RULES_PATH":"/rules" \
+  -v "$HOST_RULES_DIR:/rules" \
   hanshal785/ting-tong-test:dev
 
 echo "Ting Tong Action completed."

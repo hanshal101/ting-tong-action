@@ -14,20 +14,12 @@ RULES_FILE="${3:-custom-rule.yaml}"
 CONTAINER_RULES_DIR="/github/workspace/.ting-tong-rules"
 mkdir -p "$CONTAINER_RULES_DIR"
 
-# Determine destination directory based on input type
+# Process the input to determine the destination directory
 if [ -n "$RULES_INPUT" ]; then
-    if [ -f "$RULES_INPUT" ]; then
-        # If input is a file, use its directory
-        INPUT_DIR=$(dirname "$RULES_INPUT")
-        DEST_RULES_DIR="/github/workspace/$INPUT_DIR"
-    elif [ -d "$RULES_INPUT" ]; then
-        # If input is a directory, use it directly
-        DEST_RULES_DIR="/github/workspace/$RULES_INPUT"
-    else
-        # If input doesn't exist, create it relative to workspace
-        DEST_RULES_DIR="/github/workspace/$RULES_INPUT"
-        mkdir -p "$DEST_RULES_DIR"
-    fi
+    # Normalize the input path by removing leading ./ and resolving to absolute path
+    NORMALIZED_INPUT="${RULES_INPUT#./}"  # Remove leading ./
+    DEST_RULES_DIR="/github/workspace/$NORMALIZED_INPUT"
+    mkdir -p "$DEST_RULES_DIR"
 else
     # Default destination if no input provided
     DEST_RULES_DIR="/github/workspace/rules"
@@ -45,10 +37,10 @@ fi
 
 # Copy user-provided rules
 if [ -n "$RULES_INPUT" ]; then
-    USER_RULES_PATH="/github/workspace/$RULES_INPUT"
+    # Use the original input to reference files in the workspace
+    USER_RULES_PATH="/github/workspace/${RULES_INPUT#./}"
     if [ -f "$USER_RULES_PATH" ]; then
         echo "Copying rules from file: $USER_RULES_PATH"
-        mkdir -p "$DEST_RULES_DIR"
         cp "$USER_RULES_PATH" "$CONTAINER_RULES_DIR/"
         cp "$USER_RULES_PATH" "$DEST_RULES_DIR/"
     elif [ -d "$USER_RULES_PATH" ]; then
@@ -56,7 +48,7 @@ if [ -n "$RULES_INPUT" ]; then
         cp -r "$USER_RULES_PATH"/* "$CONTAINER_RULES_DIR/" 2>/dev/null || true
         cp -r "$USER_RULES_PATH"/* "$DEST_RULES_DIR/" 2>/dev/null || true
     else
-        echo "Warning: '$USER_RULES_PATH' is not a valid file or directory."
+        echo "Warning: '$USER_RULES_PATH' is not a valid file or directory. Directory will be created."
     fi
 fi
 
@@ -77,11 +69,19 @@ echo "Standardizing permissions for rules directory: $DEST_RULES_DIR"
 chown -R root:root "$DEST_RULES_DIR" 2>/dev/null || true
 chmod -R a+r "$DEST_RULES_DIR" 2>/dev/null || true
 
-# The host path that will be mounted is the absolute path in the workspace
 HOST_RULES_DIR="$DEST_RULES_DIR"
 
 echo "Final consolidated rules list in $DEST_RULES_DIR:"
 ls -lR "$DEST_RULES_DIR" 2>/dev/null || echo "No rules in destination directory"
+
+# Verify that the directory contains YAML files before running the test
+YAML_COUNT=$(find "$DEST_RULES_DIR" -name "*.yaml" -o -name "*.yml" | wc -l)
+echo "Found $YAML_COUNT YAML files in $DEST_RULES_DIR"
+
+if [ "$YAML_COUNT" -eq 0 ]; then
+    echo "ERROR: No YAML rule files found in $DEST_RULES_DIR"
+    exit 1
+fi
 
 echo "Running ting-tong-test container, mounting $HOST_RULES_DIR to /rules"
 

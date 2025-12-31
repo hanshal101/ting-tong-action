@@ -98,7 +98,7 @@ echo "Computed host rules directory: $HOST_RULES_DIR"
 echo "Running ting-tong-test container, mounting $HOST_RULES_DIR to /rules"
 
 # Run the ting-tong-test container with the host path
-docker run --rm --name ting-tong-test \
+docker run --rm -d --name ting-tong-test \
   --privileged \
   --pid=host \
   --net=host \

@@ -19,9 +19,9 @@ HOST_RULES_DIR="$GITHUB_WORKSPACE/.ting-tong-rules"
 mkdir -p "$CONTAINER_RULES_DIR"
 
 # Copy built-in rules (assuming they are in /app/rules in action container)
-if [ -d "/app/rules" ] && [ "$(ls -A /app/rules)" ]; then
+if [ -d "/app/built-in-rules" ] && [ "$(ls -A /app/built-in-rules)" ]; then
     echo "Copying built-in rules..."
-    cp -r /app/rules/* "$CONTAINER_RULES_DIR/"
+    cp -r /app/built-in-rules/* "$CONTAINER_RULES_DIR/"
 fi
 
 # Change to workspace to handle relative user paths

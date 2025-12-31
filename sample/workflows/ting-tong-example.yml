@@ -1,0 +1,18 @@
+name: Ting Tong Security Analysis
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-analysis:
+    runs-on: [self-hosted] # This action requires a self-hosted runner with Docker and privileged access
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run Ting Tong Security Analysis
+        uses: hanshal101/ting-tong@v1
+        with:
+          rules-path: "/home/hanshal101/secai/runa/runa/rules/real_world"

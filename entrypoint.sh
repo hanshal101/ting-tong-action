@@ -10,7 +10,7 @@ RULES_INPUT="$1"
 INLINE_RULES="$2"
 RULES_FILE="${3:-custom-rule.yaml}"
 
-# Determine the rules directory in the GitHub Actions workspace
+# Determine the rules directory
 if [ -n "$RULES_INPUT" ]; then
     NORMALIZED_INPUT="${RULES_INPUT#./}"
     RULES_DIR="/github/workspace/$NORMALIZED_INPUT"
@@ -46,65 +46,88 @@ if [ -n "$INLINE_RULES" ]; then
 fi
 
 # Standardize permissions
-echo "Standardizing permissions for rules directory: $RULES_DIR"
-chown -R root:root "$RULES_DIR" 2>/dev/null || true
 chmod -R 755 "$RULES_DIR" 2>/dev/null || true
-chmod 644 "$RULES_DIR"/*.yaml 2>/dev/null || true
-chmod 644 "$RULES_DIR"/*.yml 2>/dev/null || true
+find "$RULES_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -exec chmod 644 {} \; 2>/dev/null || true
 
-echo "Final consolidated rules list:"
+echo "Final rules list:"
 ls -lR "$RULES_DIR"
 
 # Verify YAML files
-YAML_COUNT=$(find "$RULES_DIR" -name "*.yaml" -o -name "*.yml" | wc -l)
-echo "Found $YAML_COUNT YAML files in $RULES_DIR"
-
-# Debug: Show content of each YAML file
-echo "=== DEBUG: Contents of YAML files ==="
-for file in "$RULES_DIR"/*.yaml "$RULES_DIR"/*.yml; do
-    if [ -f "$file" ]; then
-        echo "--- File: $file ---"
-        cat "$file"
-        echo ""
-    fi
-done
-echo "==================================="
+YAML_COUNT=$(find "$RULES_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) | wc -l)
+echo "Found $YAML_COUNT YAML files"
 
 if [ "$YAML_COUNT" -eq 0 ]; then
-    echo "ERROR: No YAML rule files found in $RULES_DIR"
+    echo "ERROR: No YAML rule files found"
     exit 1
 fi
 
-# CRITICAL FIX: Convert container path to host path for Docker-in-Docker
-# The GitHub Actions runner mounts the workspace at a specific location on the host
-# We need to figure out that host path to pass to the inner Docker container
+# Debug output
+echo "=== DEBUG: YAML Contents ==="
+for file in "$RULES_DIR"/*.{yaml,yml}; do
+    [ -f "$file" ] && echo "--- $(basename $file) ---" && cat "$file" && echo ""
+done
+echo "============================="
 
-# The workspace is typically mounted from the host at:
-# /home/runner/work/<repo>/<repo> -> /github/workspace (inside this container)
-# We need to construct the host path based on environment variables
-
+# CRITICAL: Compute the host path for the rules directory
+# GitHub Actions mounts workspace at: /home/runner/work/<repo>/<repo>
 if [ -n "$GITHUB_REPOSITORY" ]; then
-    # Extract repo name from GITHUB_REPOSITORY (format: owner/repo)
     REPO_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
-    # Construct the host path
-    HOST_WORKSPACE="/home/runner/work/$REPO_NAME/$REPO_NAME"
-    HOST_RULES_DIR="$HOST_WORKSPACE/${RULES_DIR#/github/workspace/}"
+    WORKSPACE_BASE="/home/runner/work/$REPO_NAME/$REPO_NAME"
+    HOST_RULES_DIR="$WORKSPACE_BASE/${RULES_DIR#/github/workspace/}"
+
+    echo "Repository: $GITHUB_REPOSITORY"
+    echo "Workspace base: $WORKSPACE_BASE"
+    echo "Host rules directory: $HOST_RULES_DIR"
 else
-    # Fallback: try to use the workspace as-is (may not work in DinD)
+    echo "WARNING: GITHUB_REPOSITORY not set, using container path"
     HOST_RULES_DIR="$RULES_DIR"
 fi
 
-echo "Computed host rules directory: $HOST_RULES_DIR"
-echo "Running ting-tong-test container, mounting $HOST_RULES_DIR to /rules"
+echo ""
+echo "Starting ting-tong-test container in background..."
+echo "Mounting: $HOST_RULES_DIR -> /rules (inside container)"
+echo ""
 
-# Run the ting-tong-test container with the host path
-docker run --rm -d --name ting-tong-test \
+# Run the ting-tong-test container in detached mode
+CONTAINER_ID=$(docker run -d --name ting-tong-test \
   --privileged \
   --pid=host \
   --net=host \
   -v /sys/fs/bpf:/sys/fs/bpf \
   -v /sys/kernel/debug:/sys/kernel/debug \
   -v "$HOST_RULES_DIR:/rules:ro" \
-  hanshal785/ting-tong-test:dev
+  hanshal785/ting-tong-test:dev)
 
-echo "Ting Tong Action completed."
+if [ -z "$CONTAINER_ID" ]; then
+    echo "✗ Failed to start ting-tong-test container"
+    exit 1
+fi
+
+echo "✓ Ting Tong container started successfully"
+echo "Container ID: $CONTAINER_ID"
+
+# Wait a few seconds to ensure it's properly initialized
+sleep 5
+
+# Check if container is still running
+if docker ps | grep -q ting-tong-test; then
+    echo "✓ Ting Tong monitoring is active and will run throughout the workflow"
+    echo ""
+    echo "NOTE: The security monitoring will continue running in the background."
+    echo "It will automatically detect and block suspicious activities."
+    echo ""
+
+    # Export container ID for potential cleanup in later steps
+    echo "TING_TONG_CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
+
+    # Show initial logs
+    echo "=== Initial Ting Tong Logs ==="
+    docker logs ting-tong-test 2>&1 || true
+    echo "==============================="
+else
+    echo "✗ Ting Tong container stopped unexpectedly"
+    docker logs ting-tong-test 2>&1 || true
+    exit 1
+fi
+
+exit 0

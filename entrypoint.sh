@@ -20,10 +20,26 @@ echo "Processing rules configuration..."
 CONSOLIDATED_RULES_DIR="/tmp/consolidated-rules"
 mkdir -p "$CONSOLIDATED_RULES_DIR"
 
+# Change to the GitHub workspace
+cd /github/workspace
+
 # Copy built-in rules to consolidated directory if they exist
 if [ -d "/app/built-in-rules" ]; then
     echo "Copying built-in rules..."
     cp -r /app/built-in-rules/* "$CONSOLIDATED_RULES_DIR/" 2>/dev/null || echo "No built-in rules found or directory is empty"
+fi
+
+# If a user provides a rules path and it exists, copy those rules as well
+if [ -n "$RULES_PATH" ]; then
+    if [ -f "$RULES_PATH" ]; then
+        echo "Copying rules from file: $RULES_PATH"
+        cp "$RULES_PATH" "$CONSOLIDATED_RULES_DIR/"
+    elif [ -d "$RULES_PATH" ]; then
+        echo "Copying rules from directory: $RULES_PATH"
+        cp -r "$RULES_PATH"/* "$CONSOLIDATED_RULES_DIR/"
+    else
+        echo "Warning: '$RULES_PATH' is not a valid file or directory."
+    fi
 fi
 
 # If inline rules are provided, add them to the consolidated directory
@@ -32,13 +48,10 @@ if [ -n "$INLINE_RULES" ] && [ "$INLINE_RULES" != "" ]; then
     echo "$INLINE_RULES" > "$CONSOLIDATED_RULES_DIR/$RULES_FILE"
 fi
 
-# If a user provides a rules path and it exists, copy those rules as well
-if [ -n "$RULES_PATH" ] && [ "$RULES_PATH" != "" ] && [ -d "$RULES_PATH" ]; then
-    echo "Adding user-provided rules from: $RULES_PATH"
-    cp -r "$RULES_PATH"/* "$CONSOLIDATED_RULES_DIR/" 2>/dev/null || echo "User rules directory may be empty"
-fi
-
 USE_RULES_PATH="$CONSOLIDATED_RULES_DIR"
+
+echo "Final consolidated rules list:"
+ls -lR "$USE_RULES_PATH"
 
 echo "Running ting-tong-test container with consolidated rules from: $USE_RULES_PATH"
 

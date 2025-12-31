@@ -1,34 +1,34 @@
 name: Ting Tong with Inline Rules
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   security-analysis:
-    runs-on: [self-hosted]  # This action requires a self-hosted runner
+    runs-on: ubuntu-latest # This action requires a self-hosted runner
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Run Ting Tong Security Analysis with Inline Rules
-      uses: hanshal101/ting-tong@v1
-      with:
-        inline-rules: |
-          apiVersion: v1
-          kind: O3Rules
-          metadata:
-            id: my-custom-rule
-            title: My Custom Rule
-            description: Detects suspicious file access
-            category: Security
-            severity: high
-          spec:
-            severity: high
-            target:
-              binary: any
-            detection:
-              file:
-                read:
-                  path: [".env", "secrets.txt", ".git-credentials"]
+      - name: Run Ting Tong Security Analysis with Inline Rules
+        uses: hanshal101/ting-tong@v1
+        with:
+          inline-rules: |
+            apiVersion: v1
+            kind: O3Rules
+            metadata:
+              id: my-custom-rule
+              title: My Custom Rule
+              description: Detects suspicious file access
+              category: Security
+              severity: high
+            spec:
+              severity: high
+              target:
+                binary: any
+              detection:
+                file:
+                  read:
+                    path: [".env", "secrets.txt", ".git-credentials"]

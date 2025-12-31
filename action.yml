@@ -3,10 +3,10 @@ author: "hanshal101"
 description: "A custom GitHub Action running ting-tong-test container for security analysis"
 
 inputs:
-  rules-path:
-    description: "Path to rules directory"
+  rules:
+    description: "Path to rules directory or file"
     required: false
-    default: "/rules"
+    default: "rules"
   inline-rules:
     description: "Inline rules to be written to rules file"
     required: false
@@ -20,7 +20,7 @@ runs:
   using: "docker"
   image: "Dockerfile"
   args:
-    - ${{ inputs.rules-path }}
+    - ${{ inputs.rules }}
     - ${{ inputs.inline-rules }}
     - ${{ inputs.rules-file }}
 

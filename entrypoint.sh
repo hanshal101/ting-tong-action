@@ -11,62 +11,52 @@ INLINE_RULES="$2"
 RULES_FILE="${3:-custom-rule.yaml}"
 
 # The consolidated rules directory will be created inside the workspace
-# This is the path inside the action container
 CONTAINER_RULES_DIR="/github/workspace/.ting-tong-rules"
-# This is the corresponding path on the host, for the docker-in-docker mount
-HOST_RULES_DIR="$GITHUB_WORKSPACE/.ting-tong-rules"
-# Change to workspace to handle relative user paths
-cd /github/workspace
-
 mkdir -p "$CONTAINER_RULES_DIR"
 
 # Determine destination directory based on input type
 if [ -n "$RULES_INPUT" ]; then
-    if [ -f "$RULES_INPUT" ] || [ -d "$RULES_INPUT" ]; then
-        # If input is a file or directory, use its parent directory or the directory itself
-        if [ -f "$RULES_INPUT" ]; then
-            DEST_RULES_DIR=$(dirname "$RULES_INPUT")
-        else
-            DEST_RULES_DIR="$RULES_INPUT"
-        fi
+    if [ -f "$RULES_INPUT" ]; then
+        # If input is a file, use its directory
+        INPUT_DIR=$(dirname "$RULES_INPUT")
+        DEST_RULES_DIR="/github/workspace/$INPUT_DIR"
+    elif [ -d "$RULES_INPUT" ]; then
+        # If input is a directory, use it directly
+        DEST_RULES_DIR="/github/workspace/$RULES_INPUT"
     else
-        # If input doesn't exist, treat it as a directory path to create
-        DEST_RULES_DIR="$RULES_INPUT"
+        # If input doesn't exist, create it relative to workspace
+        DEST_RULES_DIR="/github/workspace/$RULES_INPUT"
         mkdir -p "$DEST_RULES_DIR"
     fi
 else
     # Default destination if no input provided
-    DEST_RULES_DIR="rules"
+    DEST_RULES_DIR="/github/workspace/rules"
     mkdir -p "$DEST_RULES_DIR"
 fi
 
 echo "Consolidating all rules into: $DEST_RULES_DIR"
 
-# Copy built-in rules (assuming they are in /app/built-in-rules in action container)
+# Copy built-in rules
 if [ -d "/app/built-in-rules" ] && [ "$(ls -A /app/built-in-rules)" ]; then
     echo "Copying built-in rules..."
-    cp -r /app/built-in-rules/* "$CONTAINER_RULES_DIR/"
-    # Also copy to destination directory
-    mkdir -p "$DEST_RULES_DIR"
+    cp -r /app/built-in-rules/* "$CONTAINER_RULES_DIR/" 2>/dev/null || true
     cp -r /app/built-in-rules/* "$DEST_RULES_DIR/" 2>/dev/null || true
 fi
 
 # Copy user-provided rules
 if [ -n "$RULES_INPUT" ]; then
-    if [ -f "$RULES_INPUT" ]; then
-        echo "Copying rules from file: $RULES_INPUT"
+    USER_RULES_PATH="/github/workspace/$RULES_INPUT"
+    if [ -f "$USER_RULES_PATH" ]; then
+        echo "Copying rules from file: $USER_RULES_PATH"
         mkdir -p "$DEST_RULES_DIR"
-        cp "$RULES_INPUT" "$CONTAINER_RULES_DIR/"
-        cp "$RULES_INPUT" "$DEST_RULES_DIR/"
-    elif [ -d "$RULES_INPUT" ]; then
-        echo "Copying rules from directory: $RULES_INPUT"
-        mkdir -p "$CONTAINER_RULES_DIR"
-        cp -r "$RULES_INPUT"/* "$CONTAINER_RULES_DIR/" 2>/dev/null || true
-        cp -r "$RULES_INPUT"/* "$DEST_RULES_DIR/" 2>/dev/null || true
+        cp "$USER_RULES_PATH" "$CONTAINER_RULES_DIR/"
+        cp "$USER_RULES_PATH" "$DEST_RULES_DIR/"
+    elif [ -d "$USER_RULES_PATH" ]; then
+        echo "Copying rules from directory: $USER_RULES_PATH"
+        cp -r "$USER_RULES_PATH"/* "$CONTAINER_RULES_DIR/" 2>/dev/null || true
+        cp -r "$USER_RULES_PATH"/* "$DEST_RULES_DIR/" 2>/dev/null || true
     else
-        echo "Warning: '$RULES_INPUT' is not a valid file or directory. Creating directory."
-        mkdir -p "$RULES_INPUT"
-        DEST_RULES_DIR="$RULES_INPUT"
+        echo "Warning: '$USER_RULES_PATH' is not a valid file or directory."
     fi
 fi
 
@@ -82,13 +72,13 @@ fi
 echo "Final consolidated rules list in $CONTAINER_RULES_DIR:"
 ls -lR "$CONTAINER_RULES_DIR" 2>/dev/null || echo "No rules in container directory"
 
-# Standardize ownership and permissions to avoid issues inside the test container
+# Standardize ownership and permissions
 echo "Standardizing permissions for rules directory: $DEST_RULES_DIR"
 chown -R root:root "$DEST_RULES_DIR" 2>/dev/null || true
 chmod -R a+r "$DEST_RULES_DIR" 2>/dev/null || true
 
-# The host path is the workspace path combined with the user's relative path
-HOST_RULES_DIR="$GITHUB_WORKSPACE/$DEST_RULES_DIR"
+# The host path that will be mounted is the absolute path in the workspace
+HOST_RULES_DIR="$DEST_RULES_DIR"
 
 echo "Final consolidated rules list in $DEST_RULES_DIR:"
 ls -lR "$DEST_RULES_DIR" 2>/dev/null || echo "No rules in destination directory"

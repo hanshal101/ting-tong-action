@@ -11,9 +11,6 @@ RUN apk add --no-cache \
 # Create necessary directories
 RUN mkdir -p /app /rules
 
-# Copy built-in rules to the image
-COPY rules/ /app/built-in-rules/
-
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

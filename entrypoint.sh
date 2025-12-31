@@ -62,6 +62,7 @@ if [ -n "$INLINE_RULES" ]; then
 fi
 
 echo "Final consolidated rules list in $CONTAINER_RULES_DIR:"
+ls -lR "$CONTAINER_RULES_DIR"
 ls -lR "$CONTAINER_RULES_DIR" 2>/dev/null || echo "No rules in container directory"
 
 # Standardize ownership and permissions
@@ -77,6 +78,23 @@ ls -lR "$DEST_RULES_DIR" 2>/dev/null || echo "No rules in destination directory"
 # Verify that the directory contains YAML files before running the test
 YAML_COUNT=$(find "$DEST_RULES_DIR" -name "*.yaml" -o -name "*.yml" | wc -l)
 echo "Found $YAML_COUNT YAML files in $DEST_RULES_DIR"
+
+# Debug: Show content of each YAML file
+echo "=== DEBUG: Contents of YAML files ==="
+for file in "$DEST_RULES_DIR"/*.yaml "$DEST_RULES_DIR"/*.yml; do
+    if [ -f "$file" ]; then
+        echo "--- File: $file ---"
+        cat "$file"
+        echo ""
+        echo "--- Validating YAML syntax ---"
+        # Try to parse with Python if available
+        if command -v python3 &> /dev/null; then
+            python3 -c "import yaml; yaml.safe_load(open('$file'))" && echo "✓ Valid YAML" || echo "✗ Invalid YAML"
+        fi
+        echo ""
+    fi
+done
+echo "==================================="
 
 if [ "$YAML_COUNT" -eq 0 ]; then
     echo "ERROR: No YAML rule files found in $DEST_RULES_DIR"

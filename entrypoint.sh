@@ -107,7 +107,7 @@ echo "✓ Ting Tong container started successfully"
 echo "Container ID: $CONTAINER_ID"
 
 # Wait a few seconds to ensure it's properly initialized
-sleep 5
+sleep 20
 
 # Check if container is still running
 if docker ps | grep -q ting-tong-test; then

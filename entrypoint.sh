@@ -9,6 +9,8 @@ echo "Rules file: $3"
 RULES_INPUT="$1"
 INLINE_RULES="$2"
 RULES_FILE="${3:-custom-rule.yaml}"
+IMAGE_NAME="public.ecr.aws/f9o7b7m0/kayo:latest"
+CONTAINER_NAME="kayo-final-test"
 
 # Determine the rules directory
 if [ -n "$RULES_INPUT" ]; then
@@ -52,14 +54,22 @@ find "$RULES_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -exec chmod 644 
 echo "Final rules list:"
 ls -lR "$RULES_DIR"
 
-# Verify YAML files
-YAML_COUNT=$(find "$RULES_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) | wc -l)
-echo "Found $YAML_COUNT YAML files"
-
-if [ "$YAML_COUNT" -eq 0 ]; then
+# Verify YAML files and prepare rules arguments for Kayo
+YAML_FILES=$(find "$RULES_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \))
+if [ -z "$YAML_FILES" ]; then
     echo "ERROR: No YAML rule files found"
     exit 1
 fi
+
+RULES_ARGS=""
+for f in $YAML_FILES; do
+    relative_path=${f#"$RULES_DIR"/}
+    RULES_ARGS="$RULES_ARGS --rules /rules/$relative_path"
+done
+YAML_COUNT=$(echo "$YAML_FILES" | wc -l)
+echo "Found $YAML_COUNT YAML files"
+echo "Kayo rules arguments: $RULES_ARGS"
+
 
 # Debug output
 echo "=== DEBUG: YAML Contents ==="
@@ -84,34 +94,35 @@ else
 fi
 
 echo ""
-echo "Starting ting-tong-test container in background..."
+echo "Starting $CONTAINER_NAME container in background..."
 echo "Mounting: $HOST_RULES_DIR -> /rules (inside container)"
 echo ""
 
-# Run the ting-tong-test container in detached mode
-CONTAINER_ID=$(docker run -d --name ting-tong-test \
+# Run the Kayo container in detached mode
+CONTAINER_ID=$(docker run -d --rm --name "$CONTAINER_NAME" \
   --privileged \
   --pid=host \
   --net=host \
   -v /sys/fs/bpf:/sys/fs/bpf \
   -v /sys/kernel/debug:/sys/kernel/debug \
   -v "$HOST_RULES_DIR:/rules:ro" \
-  hanshal785/ting-tong-test:dev)
+  "$IMAGE_NAME" \
+  /app/kayo $RULES_ARGS --backend kayo --print)
 
 if [ -z "$CONTAINER_ID" ]; then
-    echo "✗ Failed to start ting-tong-test container"
+    echo "✗ Failed to start $CONTAINER_NAME container"
     exit 1
 fi
 
-echo "✓ Ting Tong container started successfully"
+echo "✓ Kayo container started successfully"
 echo "Container ID: $CONTAINER_ID"
 
 # Wait a few seconds to ensure it's properly initialized
 sleep 20
 
 # Check if container is still running
-if docker ps | grep -q ting-tong-test; then
-    echo "✓ Ting Tong monitoring is active and will run throughout the workflow"
+if docker ps | grep -q "$CONTAINER_NAME"; then
+    echo "✓ Kayo monitoring is active and will run throughout the workflow"
     echo ""
     echo "NOTE: The security monitoring will continue running in the background."
     echo "It will automatically detect and block suspicious activities."
@@ -121,12 +132,12 @@ if docker ps | grep -q ting-tong-test; then
     echo "TING_TONG_CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
 
     # Show initial logs
-    echo "=== Initial Ting Tong Logs ==="
-    docker logs ting-tong-test 2>&1 || true
+    echo "=== Initial Kayo Logs ==="
+    docker logs "$CONTAINER_NAME" 2>&1 || true
     echo "==============================="
 else
-    echo "✗ Ting Tong container stopped unexpectedly"
-    docker logs ting-tong-test 2>&1 || true
+    echo "✗ Kayo container stopped unexpectedly"
+    docker logs "$CONTAINER_NAME" 2>&1 || true
     exit 1
 fi
 
